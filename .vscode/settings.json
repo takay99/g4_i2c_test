@@ -5,5 +5,12 @@
     ],
     "cmake.preferredGenerators": [
         "Ninja"
-    ]
+    ],
+    "C_Cpp.errorSquiggles": "disabled",
+    "files.associations": {
+        "compare": "cpp",
+        "cstdint": "cpp",
+        "array": "cpp",
+        "utility": "cpp"
+    }
 }
