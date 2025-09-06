@@ -2,7 +2,7 @@
 
 class LowPassFilter {
 private:
-  static constexpr int val_qty = 50;
+  static constexpr int val_qty = 20;
   std::array<float, val_qty> acc_vect = {0};
   std::array<float, val_qty> time_vect = {0};
 

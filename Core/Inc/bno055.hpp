@@ -167,7 +167,7 @@ public:
   }
 
   bool read_register(uint8_t address, uint8_t *data, size_t size) {
-    if (!i2c_.transmit(&address, sizeof(address), 10)) {
+    if (!i2c_.transmit(&address, sizeof(address), 40)) {
       return false;
     }
     if (!i2c_.receive(data, size, 10)) {
@@ -181,10 +181,10 @@ public:
     if (!read_register(QUA_DATA_W_LSB, data, sizeof(data))) {
       return false;
     }
-    quat.w = (int16_t)((data[1] << 8) | data[0]) / 16384.0f;
-    quat.x = (int16_t)((data[3] << 8) | data[2]) / 16384.0f;
-    quat.y = (int16_t)((data[5] << 8) | data[4]) / 16384.0f;
-    quat.z = (int16_t)((data[7] << 8) | data[6]) / 16384.0f;
+    quat.w = (int16_t)((data[1] << 8) | data[0]);
+    quat.x = (int16_t)((data[3] << 8) | data[2]);
+    quat.y = (int16_t)((data[5] << 8) | data[4]);
+    quat.z = (int16_t)((data[7] << 8) | data[6]);
     return true;
   }
 
@@ -193,9 +193,11 @@ public:
     if (!read_register(GYR_DATA_X_LSB, data, sizeof(data))) {
       return false;
     }
-    ang_vel.x = (int16_t)((data[1] << 8) | data[0]) / 16.0f;
-    ang_vel.y = (int16_t)((data[3] << 8) | data[2]) / 16.0f;
-    ang_vel.z = (int16_t)((data[5] << 8) | data[4]) / 16.0f;
+    ang_vel.x = (int16_t)((data[1] << 8) | data[0]) * 0.0010902f;
+    ang_vel.y = (int16_t)((data[3] << 8) | data[2]) * 0.0010902f;
+    ang_vel.z = (int16_t)((data[5] << 8) | data[4]) * 0.0010902f;
+    // printf("Raw data: %02X %02X %02X %02X %02X %02X\n", data[0], data[1],
+    //        data[2], data[3], data[4], data[5]);
     return true;
   }
 
@@ -205,8 +207,8 @@ public:
       return false;
     }
     acc.x = (int16_t)((data[1] << 8) | data[0]) / 100.0f;
-    acc.y = (int16_t)((data[3] << 8) | data[2]) / 100.0f;
-    acc.z = (int16_t)((data[5] << 8) | data[4]) / 100.0f;
+    acc.y = (int16_t)((data[1] << 8) | data[0]) / 100.0f;
+    acc.z = (int16_t)((data[1] << 8) | data[0]) / 100.0f;
     return true;
   }
 
