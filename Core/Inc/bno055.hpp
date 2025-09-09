@@ -207,8 +207,8 @@ public:
       return false;
     }
     acc.x = (int16_t)((data[1] << 8) | data[0]) / 100.0f;
-    acc.y = (int16_t)((data[1] << 8) | data[0]) / 100.0f;
-    acc.z = (int16_t)((data[1] << 8) | data[0]) / 100.0f;
+    acc.y = (int16_t)((data[3] << 8) | data[2]) / 100.0f;
+    acc.z = (int16_t)((data[5] << 8) | data[4]) / 100.0f;
     return true;
   }
 
