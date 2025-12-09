@@ -47,6 +47,13 @@ public:
     return true;
   }
 
+  void get_bno_thread(Bno055Data &data) {
+    while (true) {
+      get_bno(data);
+      osDelay(10);
+    }
+  }
+
 private:
   I2C i2c_28;
   I2C i2c_29;

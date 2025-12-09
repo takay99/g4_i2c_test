@@ -8,6 +8,7 @@
 
 #include "bno055_double.hpp"
 #include "lowpass.hpp"
+#include "motor_free_rev.hpp"
 #include "output_to_logger.hpp"
 
 extern UART_HandleTypeDef huart2;
@@ -33,19 +34,20 @@ extern "C" void main_thread(void *) {
   // Bno055 bno055_28(i2c_28);
   // Bno055 bno055_29(i2c_29);
 
-  Bno055_double bno055(&hi2c1);
-
-  LowPassFilter lowpass_filter_1;
-  LowPassFilter lowpass_filter_2;
-  LowPassFilter lowpass_filter_vel_1;
-  LowPassFilter lowpass_filter_vel_2;
-  LowPassFilter lowpass_filter_imu;
+  LowPassFilter lowpass_filter_1(20);
+  LowPassFilter lowpass_filter_2(20);
+  LowPassFilter lowpass_filter_vel_1(10);
+  LowPassFilter lowpass_filter_vel_2(10);
+  LowPassFilter lowpass_filter_imu(20);
 
   Can<&hfdcan1> can;
   C6x0Manager c610_manager(can);
   C6x0 c610_1(c610_manager, C6x0Type::C610, C6x0Id::ID_1); // front motor
   C6x0 c610_2(c610_manager, C6x0Type::C610, C6x0Id::ID_2); // rear motor
   can.start();
+
+  MotorFreeRev motor_free_rev_1(c610_1, 2.0f);
+  MotorFreeRev motor_free_rev_2(c610_2, 2.0f);
 
   float a1;
   float a2;
@@ -80,14 +82,23 @@ extern "C" void main_thread(void *) {
   // Quaternion quat_28, quat_29;
   // AngularVelocity ang_vel_28, ang_vel_29;
   // Acceleration acc_28, acc_29;
-  Bno055Data bno055_data;
+  struct ThreadArgs {
+    Bno055_double *bno055_t;
+    Bno055Data *bno055_data;
+  };
+  // スレッドの外で定義
+  Bno055_double bno055_instance(&hi2c1); // 適切な引数で初期化
+  Bno055Data bno055_data_instance;
+
+  // データをまとめる
+  ThreadArgs args = {&bno055_instance, &bno055_data_instance};
 
   HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1);
   HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_2);
   HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
   HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_2);
 
-  while (!bno055.start(1000)) {
+  while (!args.bno055_t->start(1000)) {
     printf("Failed to initialize BNO055. Retrying...\n");
     osDelay(100);
   }
@@ -95,13 +106,17 @@ extern "C" void main_thread(void *) {
   ////////////////
   Thread bno055_thread(
       [](void *arg) {
-        auto bno055_t = static_cast<Bno055_double *>(arg);
+        // 引数をキャスト
+        auto thread_args = static_cast<ThreadArgs *>(arg);
+
         while (true) {
-          bno055_t->get_bno(bno055_data);
+          // 構造体のメンバーを通じてデータにアクセス
+          thread_args->bno055_t->get_bno(*(thread_args->bno055_data));
           osDelay(10);
         }
       },
-      &bno055, 4096, osPriorityNormal);
+      &args, // 新しく作った構造体のアドレスを渡す
+      4096, osPriorityNormal);
   // ///////////
   while (true) {
     uint32_t start = osKernelGetTickCount();
@@ -117,21 +132,20 @@ extern "C" void main_thread(void *) {
 
     c610_manager.update();
 
-    float motor_vel_1 = lowpass_filter_vel_1.lowpass(c610_1.get_rpm() / 60.0f,
-                                                     osKernelGetTickCount());
-    float motor_vel_2 = lowpass_filter_vel_2.lowpass(c610_2.get_rpm() / 60.0f,
-                                                     osKernelGetTickCount());
+    float motor_vel_1 = c610_1.get_rpm() / 60.0f;
+    ;
+    float motor_vel_2 = c610_2.get_rpm() / 60.0f;                                                  osKernelGetTickCount());
 
     motor_acc_1 = (motor_vel_1 * 0.0410311 - prevous_motor_rps_1) * 1000 /
-                  (osKernelGetTickCount() -
-                   prevous_time); // 回転数×車輛速度のための係数×ミリ秒
+                  (osKernelGetTickCount() - prevous_time);
+    // 回転数×車輛速度のための係数×ミリ秒
     motor_acc_2 = (motor_vel_2 * 0.0410311 - prevous_motor_rps_2) * 1000 /
                   (osKernelGetTickCount() - prevous_time);
 
-    float filtered_motor_acc_1 =
-        lowpass_filter_1.lowpass(motor_acc_1, osKernelGetTickCount());
-    float filtered_motor_acc_2 =
-        lowpass_filter_2.lowpass(motor_acc_2, osKernelGetTickCount());
+    // float filtered_motor_acc_1 =
+    //     lowpass_filter_1.lowpass(motor_acc_1, osKernelGetTickCount());
+    // float filtered_motor_acc_2 =
+    //     lowpass_filter_2.lowpass(motor_acc_2, osKernelGetTickCount());
 
     prevous_time = osKernelGetTickCount();
 
@@ -141,43 +155,24 @@ extern "C" void main_thread(void *) {
     motor_set_current_1 = -1 * th * 9000;
     motor_set_current_2 = th * 9000;
 
+    // motor_free_rev_1.free_rev(motor_set_current_1);
+    // motor_free_rev_2.free_rev(motor_set_current_2);
+
     c610_1.set_current_ref(motor_set_current_1); // マイナス前進
     c610_2.set_current_ref(motor_set_current_2); // プラス前進
     c610_manager.transmit();
 
-    // if (bno055_28.get_acceleration(acc_28)) {
-    //   // printf("Quaternion_28: x=%.3f, y=%.3f, z=%.3f\r\n", acc_28.x,
-    //   acc_28.y,
-    //   //  acc_28.z);
-    // } else {
-    //   printf("Failed to get quaternion data from BNO055.\n");
-    // }
-
-    // if (bno055_29.get_acceleration(acc_29)) {
-    //   // printf("Quaternion_29: x=%.3f, y=%.3f, z=%.3f\r\n", acc_29.x,
-    //   acc_29.y,
-    //   //  acc_29.z);
-    // } else {
-    //   printf("Failed to get quaternion data from BNO055.\n");
-    // }
-
-    // bno055_28.get_acceleration(acc_28);
-    // bno055_29.get_acceleration(acc_29);
-    // bno055_28.get_angular_velocity(ang_vel_28);
-    // bno055_29.get_angular_velocity(ang_vel_29);
-
-    bno055.get_bno(bno055_data);
-
+    // ログ出力
     LoggerCsvRow row;
     row.tick = osKernelGetTickCount();
-    row.get_acc_x_28 = bno055_data.acc_28.x;
-    row.get_acc_y_28 = bno055_data.acc_28.y;
-    row.get_gyr_z_28 = bno055_data.ang_vel_28.z;
-    row.get_acc_x_29 = bno055_data.acc_29.x;
-    row.get_acc_y_29 = bno055_data.acc_29.y;
-    row.get_gyr_z_29 = bno055_data.ang_vel_29.z;
-    row.get_motor_acc_1 = filtered_motor_acc_1;
-    row.get_motor_acc_2 = filtered_motor_acc_2;
+    row.get_acc_x_28 = args.bno055_data->acc_28.x;
+    row.get_acc_y_28 = args.bno055_data->acc_28.y;
+    row.get_gyr_z_28 = args.bno055_data->ang_vel_28.z;
+    row.get_acc_x_29 = args.bno055_data->acc_29.x;
+    row.get_acc_y_29 = args.bno055_data->acc_29.y;
+    row.get_gyr_z_29 = args.bno055_data->ang_vel_29.z;
+    row.get_motor_acc_1 = motor_acc_1;
+    row.get_motor_acc_2 = motor_acc_2;
     row.get_prevous_motor_rps_1 = prevous_motor_rps_1;
     row.get_prevous_motor_rps_2 = prevous_motor_rps_2;
     row.get_steer_angle = steer_angle;
