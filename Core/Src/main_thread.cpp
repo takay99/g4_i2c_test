@@ -133,8 +133,7 @@ extern "C" void main_thread(void *) {
     c610_manager.update();
 
     float motor_vel_1 = c610_1.get_rpm() / 60.0f;
-    ;
-    float motor_vel_2 = c610_2.get_rpm() / 60.0f;                                                  osKernelGetTickCount());
+    float motor_vel_2 = c610_2.get_rpm() / 60.0f;
 
     motor_acc_1 = (motor_vel_1 * 0.0410311 - prevous_motor_rps_1) * 1000 /
                   (osKernelGetTickCount() - prevous_time);
